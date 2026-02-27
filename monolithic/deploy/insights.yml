@@ -13,7 +13,7 @@ spec:
       serviceAccountName: insights-on-prem
       containers:
       - name: insights-on-prem
-        image: quay.io/ccxdev/insights-on-premise-poc:latest
+        image: quay.io/ccxdev/insights-on-prem-lsolarov:latest
         ports:
         - containerPort: 8000
           name: http
