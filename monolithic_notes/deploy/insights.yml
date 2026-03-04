@@ -1,0 +1,113 @@
+# deploy/insights.yml — Kubernetes Deployment for the Insights On-Premise application
+# =====================================================================================
+# A Deployment is a Kubernetes resource that manages running one or more identical copies
+# (replicas) of a containerized application. Kubernetes ensures the desired number of
+# replicas is always running, restarting pods if they crash or become unhealthy.
+
+# apiVersion: which Kubernetes API group and version this resource belongs to.
+# apps/v1 is the stable API version for Deployments.
+apiVersion: apps/v1
+
+# kind: the type of Kubernetes resource being defined
+kind: Deployment
+
+# metadata: identifying information about this resource
+metadata:
+  # name: the unique name for this Deployment within the namespace.
+  # Other resources reference it by this name (e.g. in `oc rollout status deployment/insights-on-prem`).
+  name: insights-on-prem
+
+# spec: the desired state — what this Deployment should do and how
+spec:
+  # replicas: how many identical pod copies to run at all times.
+  # 1 means a single instance — no high availability. Appropriate for a POC/demo.
+  replicas: 1
+
+  # template: the pod specification used to create each replica.
+  # Every pod in this Deployment will be created from this template.
+  template:
+    # metadata for the pods created from this template
+    metadata:
+      # name: the base name for pods created by this Deployment
+      name: insights-on-prem
+      # labels: key/value tags attached to the pod.
+      # The selector below uses this label to know which pods belong to this Deployment.
+      # The Service in service.yml also uses this label to route traffic to these pods.
+      labels:
+        app: insights-on-prem
+
+    # spec: the actual pod specification — what containers run inside each pod
+    spec:
+      # serviceAccountName: the Kubernetes ServiceAccount to run the pod as.
+      # The "insights-on-prem" ServiceAccount is created in serviceaccount.yml.
+      # It has cluster-reader permissions needed to authenticate to the Thanos rbac-query-proxy.
+      serviceAccountName: insights-on-prem
+
+      # containers: list of containers to run inside each pod.
+      # Most pods run a single container, as is the case here.
+      containers:
+      - # name: the container name within the pod (useful in multi-container pods)
+        name: insights-on-prem
+        # image: the fully qualified container image to pull and run.
+        # quay.io is Red Hat's container registry; lsolarov is the user/org namespace.
+        # "latest" tag means always use the most recently pushed image — in production
+        # you'd pin to a specific digest or version tag for reproducibility.
+        image: quay.io/ccxdev/insights-on-prem-lsolarov:latest
+
+        # ports: documents which ports the container listens on.
+        # This is informational — it doesn't actually open or close any ports.
+        # The Service in service.yml uses port 8000 to route traffic to this container.
+        ports:
+        - containerPort: 8000   # The port our FastAPI/uvicorn server listens on
+          name: http             # A human-readable name for this port
+          protocol: TCP          # Network protocol (TCP for HTTP)
+
+        # env: environment variables injected into the container at runtime.
+        # These override the default values from config.yml / AppConfig dataclass defaults.
+        env:
+        # POSTGRES_HOST: the hostname of the PostgreSQL database.
+        # We use the in-cluster Kubernetes DNS name of the ACM search-postgres service.
+        # Format: <service-name>.<namespace>.svc.cluster.local
+        - name: POSTGRES_HOST
+          value: "search-postgres.open-cluster-management.svc.cluster.local"
+
+        # POSTGRES_PORT: the port PostgreSQL listens on (standard default: 5432)
+        - name: POSTGRES_PORT
+          value: "5432"
+
+        # POSTGRES_USER: the database username, read from the search-postgres Kubernetes Secret.
+        # `valueFrom.secretKeyRef` tells Kubernetes to look up the value from a Secret
+        # rather than hardcoding it here — this keeps credentials out of YAML files.
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: search-postgres      # Name of the Secret resource in this namespace
+              key: database-user         # The key within that Secret to read
+
+        # POSTGRES_PASSWORD: the database password, also from the Secret.
+        # The Secret was copied into this namespace by deploy.sh (step 2).
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: search-postgres
+              key: database-password
+
+        # POSTGRES_DB: the database name within PostgreSQL, from the Secret.
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: search-postgres
+              key: database-name
+
+      # imagePullSecrets: secrets that contain credentials for pulling container images
+      # from private registries. Without this, pods would fail to pull images from
+      # private quay.io repositories with an "ImagePullBackOff" error.
+      imagePullSecrets:
+      - name: ccxdev-insights-on-prem-poc-pull-secret  # Applied in deploy.sh (step 3)
+
+  # selector: defines which pods this Deployment manages and owns.
+  # The matchLabels must match the labels set on the pod template above.
+  # Kubernetes uses this to find and track the pods that belong to this Deployment.
+  selector:
+    matchLabels:
+      app: insights-on-prem  # Must match the `labels.app` in the pod template above

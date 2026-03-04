@@ -1,0 +1,52 @@
+# deploy/service.yml — Kubernetes Service for the Insights On-Premise application
+# ==================================================================================
+# A Kubernetes Service provides a stable network endpoint (DNS name + virtual IP)
+# that routes traffic to one or more matching pods. Without a Service, other pods
+# would need to know the ephemeral IP address of each pod (which changes on restarts).
+#
+# This Service gives the application a predictable internal DNS name:
+#   insights-on-prem.insights-on-prem-poc.svc.cluster.local
+#
+# This DNS name is used in deploy.sh when configuring the ACM insights-client to
+# query our reports endpoint at:
+#   http://insights-on-prem.insights-on-prem-poc.svc.cluster.local:8000/api/v2
+
+# apiVersion: v1 is the core Kubernetes API (Services are core resources)
+apiVersion: v1
+
+# kind: Service creates a stable virtual network endpoint for pods
+kind: Service
+
+metadata:
+  # name: the DNS-friendly name for this service within the namespace.
+  # In-cluster DNS resolves `insights-on-prem` (or the full FQDN) to this service's virtual IP.
+  name: insights-on-prem
+  # NOTE: namespace is not set here — it is supplied at apply time via
+  #   `oc apply -f deploy/service.yml --namespace insights-on-prem-poc`
+
+# spec: the desired behavior of this Service
+spec:
+  # selector: defines which pods this Service routes traffic to.
+  # Traffic arriving at this Service is forwarded to pods whose labels match this selector.
+  # The pod template in insights.yml sets `labels.app: insights-on-prem`, so this matches.
+  selector:
+    app: insights-on-prem  # Route traffic to pods with this label
+
+  # ports: list of ports this Service exposes and forwards
+  ports:
+  - # protocol: network protocol for this port — TCP for HTTP traffic
+    protocol: TCP
+    # port: the port this Service listens on (what callers connect to).
+    # e.g., http://insights-on-prem:8000
+    port: 8000
+    # targetPort: the port on the pod/container to forward traffic to.
+    # Must match the `containerPort: 8000` in the Deployment's container spec.
+    targetPort: 8000
+    # name: a human-readable label for this port mapping
+    name: http
+
+  # type: ClusterIP is the default Service type.
+  # ClusterIP means the Service is only accessible from within the cluster (no external access).
+  # It gets a virtual cluster-internal IP that other pods can use to reach our app.
+  # Other types include NodePort (external access via node IP) and LoadBalancer (cloud LB).
+  type: ClusterIP

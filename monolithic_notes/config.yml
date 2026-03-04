@@ -1,0 +1,131 @@
+# Insights On-Premise Configuration
+# ===================================
+# This is the main application configuration file. It is loaded at startup
+# by app/config_loader.py. Any value here can be overridden by a corresponding
+# environment variable (see app/config.py -> _ENV_OVERRIDES for the mapping).
+
+# "service" section: core settings for the application's own behavior
+service:
+  # --- PostgreSQL database connection ---
+  # Hostname of the PostgreSQL server. In Kubernetes this is the in-cluster service DNS name.
+  # Override with env var: POSTGRES_HOST
+  postgres_host: localhost
+  # Port PostgreSQL is listening on (default: 5432)
+  # Override with env var: POSTGRES_PORT
+  postgres_port: 5432
+  # Name of the database to connect to inside PostgreSQL
+  # Override with env var: POSTGRES_DB
+  postgres_db: insights
+  # Database username
+  # Override with env var: POSTGRES_USER
+  postgres_user: insights
+  # Database password (should be overridden via a Kubernetes Secret in production)
+  # Override with env var: POSTGRES_PASSWORD
+  postgres_password: insights
+
+  # --- File upload settings ---
+  # Maximum allowed size of an uploaded archive in bytes.
+  # 104857600 = 100MB (100 * 1024 * 1024)
+  max_file_size: 104857600  # 100MB in bytes
+  # Directory where uploaded archives are temporarily stored before processing.
+  # This directory is created at startup if it doesn't exist.
+  temp_upload_dir: /tmp/insights-uploads
+  # Maximum time (in seconds) allowed for extracting a single archive.
+  # If extraction takes longer than this, the operation is killed.
+  extract_timeout: 300
+
+  # --- insights-core formatter ---
+  # Fully qualified Python class name for the output formatter used when running insights-core.
+  # This class controls how rule results are serialized (e.g., to JSON).
+  # The default JSON format is: ccx_ocp_core.core.formats.json.OCPRecommendationsJsonFormat
+  format: ccx_ocp_core.core.formats.json.OCPRecommendationsJsonFormat
+
+  # --- insights-core component filtering ---
+  # Optional list of component name prefixes to run. Leave empty ([]) to run ALL
+  # single-node components (i.e., all rules and parsers in the loaded packages).
+  # Example: ["ccx_rules_ocp.external.rules"] would only run rules in that sub-package.
+  # Uses dr.COMPONENTS[dr.GROUPS.single] if empty.
+  target_components: []
+
+  # --- Archive size protection ---
+  # Maximum total size (in bytes) of the unpacked contents of an archive.
+  # -1 means no limit is applied (allow any size).
+  # Set this to a positive number to prevent very large archives from consuming all disk space.
+  unpacked_archive_size_limit: -1
+
+  # --- Thanos / Prometheus metrics settings ---
+  # URL of the rbac-query-proxy endpoint inside the OpenShift cluster.
+  # This proxy gives this service authenticated access to Prometheus metrics
+  # for all managed clusters via the MultiCluster Observability stack.
+  thanos_url: https://rbac-query-proxy.open-cluster-management-observability.svc.cluster.local:8443
+  # How many seconds to wait for a response from Thanos before timing out
+  thanos_query_timeout: 10
+  # How many minutes in the past to look when evaluating Prometheus/Thanos queries.
+  # A value of 60 means: "give me the state of these metrics as of 60 minutes ago."
+  thanos_query_lookback_minutes: 60
+
+# "plugins" section: configures which insights-core rule packages are loaded
+plugins:
+  # List of Python package names to import as insights-core rule plugins.
+  # These packages must be installed in the Python environment (via requirements.txt).
+  # - ccx_rules_ocp.external: the main CCX OCP rules package (external/community rules)
+  # - ccx_rules_processing: additional processing rules
+  packages:
+    - ccx_rules_ocp.external
+    - ccx_rules_processing
+
+  # Per-component configuration overrides.
+  # Each entry is a dict with "name" (the fully qualified component class) and
+  # any other settings supported by that component.
+  # Here we disable the TelemeterServiceConfig component (it's not used on-prem).
+  configs:
+    - name: ccx_ocp_core.config.telemeter.TelemeterServiceConfig
+      enabled: false  # Disable — Telemeter is a cloud-only service, not available on-prem
+
+# "logging" section: standard Python logging configuration in dictConfig format.
+# See: https://docs.python.org/3/library/logging.config.html#logging-config-dictschema
+logging:
+  # Schema version — must be 1 for Python's logging.config.dictConfig()
+  version: 1
+  # If false, loggers created before this config is applied are not disabled.
+  # Keeps third-party library loggers (e.g. uvicorn, sqlalchemy) working.
+  disable_existing_loggers: false
+
+  # Named log handlers — these control WHERE log messages are written
+  handlers:
+    default:
+      level: DEBUG              # This handler accepts messages of DEBUG severity and above
+      class: logging.StreamHandler  # Write to a stream (console output)
+      stream: ext://sys.stdout  # Write to standard output (captured by container runtime)
+      formatter: brief          # Use the "brief" format defined below
+
+  # Named formatters — these control HOW log messages are formatted
+  formatters:
+    # Brief format: timestamp, logger name, level, and message on one line
+    brief:
+      format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    # JSON-friendly format: includes filename, line number, and process ID
+    # (not currently used but available for structured logging setups)
+    json:
+      format: "%(filename)s %(lineno)d %(process)d %(levelname)s %(asctime)s %(name)s %(message)s"
+
+  # Root logger configuration — applies to all loggers unless overridden below
+  root:
+    level: INFO          # Default level: INFO and above (DEBUG messages suppressed unless overridden)
+    handlers:
+      - default          # Use the "default" handler (stdout)
+
+  # Per-logger level overrides — more specific loggers take precedence over the root logger
+  loggers:
+    # Suppress verbose DEBUG output from insights-core internals
+    insights:
+      level: WARNING       # Only show warnings and errors from the insights package
+    # The dependency runner is very chatty at DEBUG; suppress most of its output
+    insights.core.dr:
+      level: ERROR         # Only show errors from the DR module
+    # Enable detailed SQL query logging (useful for debugging DB performance)
+    sqlalchemy.engine:
+      level: DEBUG         # Show all SQL statements executed
+    # Our own application code — enable DEBUG to see all app-level log messages
+    app:
+      level: DEBUG         # Show everything from the app.* loggers

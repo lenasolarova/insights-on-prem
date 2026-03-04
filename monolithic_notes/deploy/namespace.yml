@@ -1,0 +1,29 @@
+# deploy/namespace.yml — Kubernetes Namespace for the Insights On-Premise POC
+# =============================================================================
+# A Namespace is a logical partition within a Kubernetes/OpenShift cluster.
+# It isolates resources (pods, services, secrets, etc.) from those in other namespaces.
+# All resources for this project live in the "insights-on-prem-poc" namespace.
+#
+# Benefits of using a dedicated namespace:
+#   - Resource isolation: our pods can't accidentally interact with ACM or other services
+#   - Access control: RBAC policies can be scoped to just this namespace
+#   - Easy cleanup: `oc delete namespace insights-on-prem-poc` removes everything at once
+
+# apiVersion: v1 is the core Kubernetes API version (no prefix needed for core resources)
+apiVersion: v1
+
+# kind: Namespace defines a new namespace (logical isolation boundary)
+kind: Namespace
+
+metadata:
+  # name: the unique name for this namespace across the entire cluster.
+  # All other YAML files in the deploy/ directory reference this namespace name.
+  # "poc" suffix indicates this is a Proof of Concept deployment, not production.
+  name: insights-on-prem-poc
+
+  # labels: key/value pairs attached to this namespace for identification and selection.
+  # Here we add a "name" label whose value matches the namespace name itself.
+  # This is a common convention that makes it easier to select or filter this namespace
+  # using label selectors (e.g., in NetworkPolicy or other resources).
+  labels:
+    name: insights-on-prem-poc
