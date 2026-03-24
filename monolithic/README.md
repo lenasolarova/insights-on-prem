@@ -77,6 +77,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 - OpenShift cluster with ACM installed
 - MultiClusterHub created in `open-cluster-management` namespace (it can take several minutes before all components are started)
 - Quay pull secret for `ccxdev/insights-on-prem-poc` repository saved as `deploy/ccxdev-insights-on-prem-poc-secret.yml`
+- (optional) Have Multicluster Observability Operator deployed according to [these instructions](https://github.com/stolostron/multicluster-observability-operator/tree/main?tab=readme-ov-file#run-the-operator-in-the-cluster) - required for upgrade risk predictions
 
 ### Deploy
 
@@ -112,8 +113,42 @@ oc logs -f deployment/insights-on-prem -n insights-on-prem-poc
 - **MultiClusterHub operator is paused** after deployment (annotation `mch-pause=true`) to prevent it from reverting the `CCX_SERVER` configuration.
 - To unpause the operator:
   ```bash
-  oc annotate multiclusterhub multiclusterhub -n open-cluster-management mch-pause-
+  oc annotate multiclusterhub multiclusterhub -n open-cluster-management mch-pause=false --overwrite
   ```
+
+## How to trigger an Insights recommendation
+
+To trigger creation of an Insights recommendation, and the creation of the corresponing `PolicyReport` custom resource by an Insights Client,
+at least one of the rule conditions has to be met. The easiest way to achieve that is by running the following command:
+
+```bash
+oc apply -f - <<'EOF'
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: insights-test-webhook
+webhooks:
+  - name: insights-test.example.com
+    admissionReviewVersions: ["v1"]
+    clientConfig:
+      url: "https://localhost:1234/validate"
+    failurePolicy: Ignore
+    sideEffects: None
+    timeoutSeconds: 30
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+        scope: "*"
+EOF
+```
+
+The command should trigger [webhook_timeout_is_larger_than_default](https://gitlab.cee.redhat.com/ccx/ccx-rules-ocp/-/blob/master/ccx_rules_ocp/external/rules/webhook_timeout_is_larger_than_default.py) rule. Depending on the frequency of archive uploads from Insights Operator (in `deploy.sh` script set to 1 minute for PoC purposes, but default value is 2 hours), the recommendation and the `PolicyReport` should be created. You can check that with this command directly in the ACM cluster:
+
+```bash
+oc get policyreport --all-namespaces
+```
 
 ## Database Access
 
