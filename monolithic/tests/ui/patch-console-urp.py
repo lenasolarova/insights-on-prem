@@ -18,11 +18,11 @@ PATCHED_MARKER = 'insights-on-prem.insights-on-prem-poc.svc.cluster.local'
 PATCHED_FN = '''async function upgradeRiskPredictions(req, res) {
     const token = await getAuthenticatedToken(req, res);
     if (token) {
-        const chucks = [];
-        req.on('data', (chuck) => { chucks.push(chuck); });
+        const chunks = [];
+        req.on('data', (chunk) => { chunks.push(chunk); });
         req.on('end', async () => {
             try {
-                const body = JSON.parse(chucks.join());
+                const body = JSON.parse(chunks.join());
                 const onPremBase = 'http://insights-on-prem.insights-on-prem-poc.svc.cluster.local:8000';
                 const predictions = await Promise.all(
                     body.clusterIds.map((clusterId) =>

@@ -147,7 +147,7 @@ The Insights section of that page has four panels. Here is what backs each one a
 
 **Source:** `PolicyReport` custom resources created by `insights-client` in each managed cluster's namespace.
 
-**Extra setup:** N/A, triggerred recommendations are shown in UI
+**Extra setup:** N/A, triggered recommendations are shown in UI
 
 ### Update risk predictions
 
