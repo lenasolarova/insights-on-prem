@@ -2,6 +2,7 @@
 import logging
 import os
 import uuid
+from datetime import datetime
 
 from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks, FastAPI, File, Request, UploadFile, Depends, HTTPException, Header
@@ -16,6 +17,9 @@ from app.schemas import (
     ReportResponseV2,
     UpgradeRisksPredictionRequest,
     UpgradeRisksPredictionResponse,
+    BatchUpgradeRisksPredictionRequest,
+    BatchUpgradeRisksPredictionResponse,
+    ClusterPrediction,
 )
 from app.content_parser_yaml import YAMLContentParser
 from app.services.report_service import ReportService
@@ -219,6 +223,51 @@ async def upgrade_risks_prediction(
             status_code=500,
             detail="Internal server error while predicting upgrade risks",
         )
+
+
+@app.post(
+    "/api/insights-results-aggregator/v2/upgrade-risks-prediction",
+    response_model=BatchUpgradeRisksPredictionResponse,
+    status_code=200,
+)
+async def upgrade_risks_prediction_batch(
+    request: Request,
+    body: BatchUpgradeRisksPredictionRequest,
+):
+    """
+    Batch upgrade risks prediction matching the ccx-upgrades-data-eng API.
+
+    Accepts { clusters: [...] } and returns { predictions: [...] }, matching
+    the MultiClusterUpgradeApiResponse format that the ACM console expects.
+    This allows redirecting the console's console.redhat.com URP call to this
+    service via a simple URL swap — no function patching required.
+
+    :param body: Request body containing list of cluster UUIDs
+    :return: BatchUpgradeRisksPredictionResponse
+    """
+    thanos_service: ThanosService = request.app.state.thanos_service
+    prediction_service: UpgradePredictionService = request.app.state.upgrade_prediction_service
+
+    predictions = []
+    for cluster_id in body.clusters:
+        try:
+            console_url, alerts, focs = thanos_service.query_cluster_metrics(cluster_id)
+            result = prediction_service.predict(alerts, focs, console_url)
+            predictions.append(ClusterPrediction(
+                cluster_id=cluster_id,
+                prediction_status="ok",
+                upgrade_recommended=result.upgrade_recommended,
+                upgrade_risks_predictors=result.upgrade_risks_predictors,
+                last_checked_at=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            ))
+        except Exception as e:
+            logger.error(f"Error predicting upgrade risks for cluster {cluster_id}: {e}")
+            predictions.append(ClusterPrediction(
+                cluster_id=cluster_id,
+                prediction_status="No data for the cluster",
+            ))
+
+    return BatchUpgradeRisksPredictionResponse(predictions=predictions)
 
 
 @app.exception_handler(HTTPException)

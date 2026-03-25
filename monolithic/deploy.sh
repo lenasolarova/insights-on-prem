@@ -35,22 +35,33 @@ oc annotate multiclusterhub multiclusterhub -n open-cluster-management mch-pause
 
 echo "9. Configuring ACM insights-client..."
 # Update the CCX_SERVER environment variable to point to on-premise service
+# Also, set insights-client poll interval to 1 minute for demo purposes
 oc set env deployment/insights-client -n open-cluster-management \
-  CCX_SERVER=http://insights-on-prem.insights-on-prem-poc.svc.cluster.local:8000/api/v2
-
-# Set insights-client poll interval to 1 minute for demo purposes
-oc set env deployment/insights-client -n open-cluster-management \
+  CCX_SERVER=http://insights-on-prem.insights-on-prem-poc.svc.cluster.local:8000/api/v2 \
   POLL_INTERVAL=1
 
-echo "10. Waiting for deployment to roll out..."
+echo "10. Waiting for insights-client to roll out..."
 oc rollout status deployment/insights-client -n open-cluster-management --timeout=120s
+
+echo "11. Configuring ACM console for upgrade risk predictions..."
+# The ACM console hardcodes console.redhat.com for URP — deploy a custom image that
+# reads UPGRADE_RISKS_PREDICTION_URL env var instead (see README for details).
+# Must be done AFTER pausing MCH (step 8), otherwise MCH reverts the image.
+# Requires ccxdev-robot-pull-secret in open-cluster-management namespace — see README.
+oc set image deployment/console-chart-console-v2 -n open-cluster-management \
+  console=quay.io/ccxdev/insights-on-prem-lsolarov-console:latest
+oc patch deployment console-chart-console-v2 -n open-cluster-management --type=json \
+  -p='[{"op":"add","path":"/spec/template/spec/imagePullSecrets","value":[{"name":"ccxdev-robot-pull-secret"}]},{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Always"}]' \
+  2>/dev/null || true
+# UPGRADE_RISKS_PREDICTION_URL is set by test_ui.sh after the route is created
+oc rollout status deployment/console-chart-console-v2 -n open-cluster-management --timeout=120s
 
 echo ""
 echo "=== Deployment Complete ==="
 echo ""
 echo "IMPORTANT: MultiClusterHub operator is PAUSED (mch-pause=true annotation)"
-echo "           This prevents the operator from reverting the CCX_SERVER change."
+echo "           This prevents MCH from reverting CCX_SERVER and the console image."
+echo "           If you unpause MCH, re-run deploy.sh to restore these changes."
 echo "           To unpause: oc annotate multiclusterhub multiclusterhub -n open-cluster-management mch-pause-"
 echo ""
-echo "To verify insights-client configuration:"
-echo "  oc get deployment insights-client -n open-cluster-management -o yaml | grep -A2 'name: CCX_SERVER'"
+echo "Next: run test_ui.sh to set up test data and configure URP routing."

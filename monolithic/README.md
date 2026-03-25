@@ -40,9 +40,13 @@ docker login quay.io
 
 # Build and push multiarch image
 docker buildx build --platform linux/amd64,linux/arm64 \
-  -t quay.io/ccxdev/insights-on-prem-poc:latest \
+  -t quay.io/ccxdev/insights-on-premise-poc:latest \
   --push .
 ```
+
+The image is referenced as `quay.io/ccxdev/insights-on-premise-poc:latest` in `deploy/insights.yml`. This image includes:
+- The core on-prem pipeline (archive processing, recommendations, URP via Thanos)
+- A batch URP endpoint at `/api/insights-results-aggregator/v2/upgrade-risks-prediction` matching the `ccx-upgrades-data-eng` API format, which allows the ACM console to route URP calls to this service instead of `console.redhat.com` (see [Update risk predictions](#update-risk-predictions) section)
 
 ## Running Locally with Docker Compose
 
@@ -139,6 +143,12 @@ The results of the on-premise pipeline are visible in the ACM fleet overview at:
 https://<your-cluster-api-server>/multicloud/home/overview
 ```
 
+**Before** (`deploy.sh` only, without `test_ui.sh`):
+
+![ACM Fleet Overview - Insights section with no data](docs/fleet-overview-empty.png)
+
+**After** (`test_ui.sh` applied):
+
 ![ACM Fleet Overview - Insights section showing all four panels populated from the on-premise pipeline](docs/fleet-overview-ui.png)
 
 The Insights section of that page has four panels. Here is what backs each one and what is needed for it to show data:
@@ -153,22 +163,65 @@ The Insights section of that page has four panels. Here is what backs each one a
 
 **Source:** The ACM console backend has a `/upgrade-risks-prediction` route that is hardcoded to forward to `https://console.redhat.com/api/insights-results-aggregator/v2/upgrade-risks-prediction` (see [line 55 of `upgrade-risks-prediction.ts`](https://github.com/stolostron/console/blob/25e89cf074e27ef24bc850778123e281a767d9ab/backend/src/routes/upgrade-risks-prediction.ts#L55)). There is no equivalent of `CCX_SERVER` for this endpoint — the URL is not configurable so we need a patch for now.
 
-**Why patching is needed:** Because the URL is hardcoded, the on-prem pipeline cannot receive URP requests without modifying the console backend. `test_ui.sh` works around this by copying `backend.mjs` from the running console pod, replacing the `upgradeRiskPredictions` function to call the on-prem service instead, and mounting the patched file via a ConfigMap. The long-term fix is a PR to `stolostron/console` to make the URL configurable via an environment variable (e.g. `UPGRADE_RISKS_PREDICTION_URL`), which a future ACM addon can then set — the same pattern used for `CCX_SERVER`.
+**How `test_ui.sh` works around this:** `test_ui.sh` deploys a custom console image with this one-line change applied and sets `UPGRADE_RISKS_PREDICTION_URL` to point to the on-prem service. See the [Custom console image for URP](#custom-console-image-for-urp) section below for details.
 
 ### Alerts
 
 **Source:** Thanos directly, via MCO. The ACM console reads `ALERTS` metrics from Thanos and displays raw alert counts. No on-prem involvement — this section works automatically once MCO is deployed.
 
+**How PrometheusRule → Thanos works:** `PrometheusRule` is a Kubernetes CRD provided by the Prometheus Operator (part of OpenShift monitoring). When applied, Prometheus evaluates the alerting rules and fires alerts matching the conditions. MCO's `metrics-collector` pod remote-writes all metrics — including the `ALERTS` series — from the cluster's Prometheus to the central Thanos instance. Once in Thanos, they are queryable via `rbac-query-proxy` by the on-prem service and visible in the ACM console's Alerts panel.
+
 ### Failing operators
 
 **Source:** Thanos directly, via MCO. The ACM console reads `cluster_operator_conditions` metrics from Thanos. No on-prem involvement.
 
-### Testing all four panels
+### Testing the on-prem pipeline panels
 
 Run `test_ui.sh` after `deploy.sh` to set up test data that triggers all four sections and verifies the data is flowing through the on-prem service (not `console.redhat.com`):
 
 ```bash
 ./test_ui.sh
+```
+
+#### Custom console image for URP
+
+`test_ui.sh` deploys a custom console image (`quay.io/ccxdev/insights-on-prem-lsolarov-console:latest`) that adds `UPGRADE_RISKS_PREDICTION_URL` env var support to the console backend. This is built from the original ACM console image with a single line change in [`backend/src/routes/upgrade-risks-prediction.ts`](https://github.com/stolostron/console/blob/25e89cf074e27ef24bc850778123e281a767d9ab/backend/src/routes/upgrade-risks-prediction.ts#L55).
+
+> **Note:** The image is private. Pulling it requires a Quay robot account secret in the `open-cluster-management` namespace. `test_ui.sh` expects a secret named `ccxdev-robot-pull-secret` — create it once per cluster with:
+> ```bash
+> oc create secret docker-registry ccxdev-robot-pull-secret \
+>   -n open-cluster-management \
+>   --docker-server=quay.io \
+>   --docker-username='ccxdev+insights_on_prem_poc' \
+>   --docker-password='<robot-token>'
+> ```
+
+> **TODO:** Ask Zach / Kubo / `stolostron/console` to make a similar change upstream. Once merged, the custom image is of course no longer needed and `test_ui.sh` reduces to just the `oc set env` call. This approach is just for testing until the change is done on the UI side, not for the final product.
+
+```typescript
+// Before (hardcoded):
+const insightsPath = 'https://console.redhat.com/api/insights-results-aggregator/v2/upgrade-risks-prediction'
+
+// After (env var with fallback):
+const insightsPath = process.env.UPGRADE_RISKS_PREDICTION_URL ?? 'https://console.redhat.com/api/insights-results-aggregator/v2/upgrade-risks-prediction'
+```
+
+Once this change is merged into `stolostron/console`, the custom image is no longer needed — `test_ui.sh` could reduce to just:
+
+```bash
+oc set env deployment/console-chart-console-v2 -n open-cluster-management \
+  UPGRADE_RISKS_PREDICTION_URL=http://insights-on-prem.insights-on-prem-poc.svc.cluster.local:8000/api/insights-results-aggregator/v2/upgrade-risks-prediction
+```
+
+To rebuild the custom image:
+```bash
+git clone git@github.com:stolostron/console.git
+# apply the one-line change above to backend/src/routes/upgrade-risks-prediction.ts
+cd backend && npm install && npm run build
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -f Dockerfile.console \
+  -t quay.io/ccxdev/insights-on-prem-lsolarov-console:latest \
+  --push .
 ```
 
 ## Database Access
