@@ -196,7 +196,7 @@ Run `test_ui.sh` after `deploy.sh` to set up test data that triggers all four se
 >   --docker-password='<robot-token>'
 > ```
 
-> **TODO:** Ask Zach / Kubo / `stolostron/console` to make a similar change upstream. Once merged, the custom image is of course no longer needed and `test_ui.sh` reduces to just the `oc set env` call. This approach is just for testing until the change is done on the UI side, not for the final product.
+> **TODO:** [CCXDEV-16237](https://redhat.atlassian.net/browse/CCXDEV-16237) — Ask `stolostron/console` to make a similar change upstream. Once merged, the custom image is no longer needed and `test_ui.sh` reduces to just the `oc set env` call. This approach is just for testing until the change is done on the UI side, not for the final product.
 
 ```typescript
 // Before (hardcoded):
