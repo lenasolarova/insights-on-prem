@@ -1,4 +1,5 @@
 """FastAPI application for Insights On Premise."""
+import asyncio
 import logging
 import os
 import uuid
@@ -248,26 +249,31 @@ async def upgrade_risks_prediction_batch(
     thanos_service: ThanosService = request.app.state.thanos_service
     prediction_service: UpgradePredictionService = request.app.state.upgrade_prediction_service
 
-    predictions = []
-    for cluster_id in body.clusters:
+    MAX_BATCH_SIZE = 100
+    clusters = body.clusters[:MAX_BATCH_SIZE]
+
+    async def predict_for_cluster(cluster_id: str) -> ClusterPrediction:
         try:
-            console_url, alerts, focs = thanos_service.query_cluster_metrics(cluster_id)
+            console_url, alerts, focs = await asyncio.to_thread(
+                thanos_service.query_cluster_metrics, cluster_id
+            )
             result = prediction_service.predict(alerts, focs, console_url)
-            predictions.append(ClusterPrediction(
+            return ClusterPrediction(
                 cluster_id=cluster_id,
                 prediction_status="ok",
                 upgrade_recommended=result.upgrade_recommended,
                 upgrade_risks_predictors=result.upgrade_risks_predictors,
                 last_checked_at=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-            ))
-        except Exception as e:
-            logger.error(f"Error predicting upgrade risks for cluster {cluster_id}: {e}")
-            predictions.append(ClusterPrediction(
+            )
+        except Exception:
+            logger.exception("Error predicting upgrade risks for cluster %s", cluster_id)
+            return ClusterPrediction(
                 cluster_id=cluster_id,
                 prediction_status="No data for the cluster",
-            ))
+            )
 
-    return BatchUpgradeRisksPredictionResponse(predictions=predictions)
+    predictions = await asyncio.gather(*[predict_for_cluster(c) for c in clusters])
+    return BatchUpgradeRisksPredictionResponse(predictions=list(predictions))
 
 
 @app.exception_handler(HTTPException)

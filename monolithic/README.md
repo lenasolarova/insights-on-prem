@@ -80,7 +80,7 @@ The image is referenced as `quay.io/ccxdev/insights-on-premise-poc:latest` in `d
 ### Prerequisites
 - OpenShift cluster with ACM installed
 - MultiClusterHub created in `open-cluster-management` namespace (it can take several minutes before all components are started)
-- Quay pull secret for `ccxdev/insights-on-prem-poc` repository saved as `deploy/ccxdev-insights-on-prem-poc-secret.yml`
+- Quay pull secret for `ccxdev/insights-on-premise-poc` repository saved as `deploy/ccxdev-insights-on-prem-poc-secret.yml`
 - (optional) Have Multicluster Observability Operator deployed according to [these instructions](https://github.com/stolostron/multicluster-observability-operator/tree/main?tab=readme-ov-file#run-the-operator-in-the-cluster) - required for upgrade risk predictions
 
 ### Deploy
@@ -187,14 +187,7 @@ Run `test_ui.sh` after `deploy.sh` to set up test data that triggers all four se
 
 `test_ui.sh` deploys a custom console image (`quay.io/ccxdev/insights-on-prem-lsolarov-console:latest`) that adds `UPGRADE_RISKS_PREDICTION_URL` env var support to the console backend. This is built from the original ACM console image with a single line change in [`backend/src/routes/upgrade-risks-prediction.ts`](https://github.com/stolostron/console/blob/25e89cf074e27ef24bc850778123e281a767d9ab/backend/src/routes/upgrade-risks-prediction.ts#L55).
 
-> **Note:** The image is private. Pulling it requires a Quay robot account secret in the `open-cluster-management` namespace. `test_ui.sh` expects a secret named `ccxdev-robot-pull-secret` — create it once per cluster with:
-> ```bash
-> oc create secret docker-registry ccxdev-robot-pull-secret \
->   -n open-cluster-management \
->   --docker-server=quay.io \
->   --docker-username='ccxdev+insights_on_prem_poc' \
->   --docker-password='<robot-token>'
-> ```
+> **Note:** The image is private. `deploy.sh` automatically copies the existing `ccxdev-insights-on-prem-poc-pull-secret` (created in step 3) to `open-cluster-management` — no extra setup needed since it uses the same `ccxdev+insights_on_prem_poc` robot account.
 
 > **TODO:** [CCXDEV-16237](https://redhat.atlassian.net/browse/CCXDEV-16237) — Ask `stolostron/console` to make a similar change upstream. Once merged, the custom image is no longer needed and `test_ui.sh` reduces to just the `oc set env` call. This approach is just for testing until the change is done on the UI side, not for the final product.
 

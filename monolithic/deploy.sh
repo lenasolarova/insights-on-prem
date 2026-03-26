@@ -47,12 +47,16 @@ echo "11. Configuring ACM console for upgrade risk predictions..."
 # The ACM console hardcodes console.redhat.com for URP — deploy a custom image that
 # reads UPGRADE_RISKS_PREDICTION_URL env var instead (see README for details).
 # Must be done AFTER pausing MCH (step 8), otherwise MCH reverts the image.
-# Requires ccxdev-robot-pull-secret in open-cluster-management namespace — see README.
+# Reuse the existing pull secret (same ccxdev+insights_on_prem_poc robot account).
+# Copy it to open-cluster-management so the console deployment can pull the image.
+oc get secret ccxdev-insights-on-prem-poc-pull-secret -n insights-on-prem-poc -o json | \
+  python3 -c "import sys,json; d=json.load(sys.stdin); d['metadata']={'name':'ccxdev-insights-on-prem-poc-pull-secret','namespace':'open-cluster-management'}; print(json.dumps(d))" | \
+  oc apply -f -
 oc set image deployment/console-chart-console-v2 -n open-cluster-management \
   console=quay.io/ccxdev/insights-on-prem-lsolarov-console:latest
-oc patch deployment console-chart-console-v2 -n open-cluster-management --type=json \
-  -p='[{"op":"add","path":"/spec/template/spec/imagePullSecrets","value":[{"name":"ccxdev-robot-pull-secret"}]},{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Always"}]' \
-  2>/dev/null || true
+# Strategic merge patch appends to imagePullSecrets by name rather than replacing the list.
+oc patch deployment console-chart-console-v2 -n open-cluster-management --type=strategic \
+  -p='{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"ccxdev-insights-on-prem-poc-pull-secret"}],"containers":[{"name":"console","imagePullPolicy":"Always"}]}}}}'
 # UPGRADE_RISKS_PREDICTION_URL is set by test_ui.sh after the route is created
 oc rollout status deployment/console-chart-console-v2 -n open-cluster-management --timeout=120s
 
