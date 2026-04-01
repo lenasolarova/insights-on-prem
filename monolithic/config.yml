@@ -8,7 +8,7 @@ service:
   postgres_password: insights
   max_file_size: 104857600  # 100MB in bytes
   temp_upload_dir: /tmp/insights-uploads
-  extract_timeout: 300
+  extract_timeout_seconds: 300
   format: ccx_ocp_core.core.formats.json.OCPRecommendationsJsonFormat
 
   # Target components to run (empty list means run all single-node components)
@@ -20,7 +20,7 @@ service:
 
   # Thanos configuration
   thanos_url: https://rbac-query-proxy.open-cluster-management-observability.svc.cluster.local:8443
-  thanos_query_timeout: 10
+  thanos_query_timeout_seconds: 10
   thanos_query_lookback_minutes: 60
 
 plugins:
