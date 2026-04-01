@@ -16,7 +16,6 @@ from app.schemas import (
     UploadResponse,
     ErrorResponse,
     ReportResponseV2,
-    UpgradeRisksPredictionRequest,
     UpgradeRisksPredictionResponse,
     BatchUpgradeRisksPredictionRequest,
     BatchUpgradeRisksPredictionResponse,
@@ -184,45 +183,6 @@ async def get_cluster_report_v2(
         raise HTTPException(
             status_code=500,
             detail="Internal server error while fetching cluster report",
-        )
-
-
-@app.post(
-    "/upgrade-risks-prediction",
-    response_model=UpgradeRisksPredictionResponse,
-    status_code=200,
-    responses={
-        500: {"model": ErrorResponse, "description": "Internal Server Error"},
-    },
-)
-async def upgrade_risks_prediction(
-    request: Request,
-    body: UpgradeRisksPredictionRequest,
-):
-    """
-    Predict upgrade risks for a cluster based on current alerts and operator conditions.
-
-    Queries Thanos for active alerts and failing operator conditions,
-    then applies static filtering rules to identify actual upgrade risks.
-
-    :param body: Request body containing cluster_id
-    :return: UpgradeRisksPredictionResponse with recommendation and risks
-    """
-    thanos_service: ThanosService = request.app.state.thanos_service
-    prediction_service: UpgradePredictionService = request.app.state.upgrade_prediction_service
-
-    try:
-        console_url, alerts, focs = thanos_service.query_cluster_metrics(body.cluster_id)
-        return prediction_service.predict(alerts, focs, console_url)
-
-    except Exception as e:
-        logger.error(
-            f"Error predicting upgrade risks for cluster {body.cluster_id}: {e}",
-            exc_info=True,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error while predicting upgrade risks",
         )
 
 
