@@ -1,5 +1,5 @@
 """Database models for Insights On Premise."""
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, DateTime, PrimaryKeyConstraint
 from sqlalchemy.dialects.postgresql import VARCHAR, insert
 from sqlalchemy.orm import Session
@@ -39,7 +39,7 @@ class Report(Base):
         :param gathered_at: When the report was gathered
         :return: The created or updated Report instance
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Prepare insert statement with ON CONFLICT DO UPDATE
         stmt = insert(cls).values(
@@ -110,7 +110,7 @@ class RuleHit(Base):
         :param error_key: Error key for the rule
         :return: The created or updated RuleHit instance
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Prepare insert statement with ON CONFLICT DO UPDATE
         stmt = insert(cls).values(

@@ -2,7 +2,7 @@
 import logging
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Tuple
 
 from fastapi import BackgroundTasks, UploadFile
@@ -169,5 +169,5 @@ class UploadService:
         return UploadResponse(
             request_id=request_id,
             status="accepted",
-            uploaded_at=datetime.utcnow(),
+            uploaded_at=datetime.now(timezone.utc),
         )
