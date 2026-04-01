@@ -3,7 +3,7 @@ import asyncio
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks, FastAPI, File, Request, UploadFile, Depends, HTTPException, Header
@@ -263,7 +263,7 @@ async def upgrade_risks_prediction_batch(
                 prediction_status="ok",
                 upgrade_recommended=result.upgrade_recommended,
                 upgrade_risks_predictors=result.upgrade_risks_predictors,
-                last_checked_at=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                last_checked_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             )
         except Exception:
             logger.exception("Error predicting upgrade risks for cluster %s", cluster_id)
