@@ -8,7 +8,7 @@ service:
   postgres_password: insights
   max_file_size: 104857600  # 100MB in bytes
   temp_upload_dir: /tmp/insights-uploads
-  extract_timeout: 300
+  extract_timeout_seconds: 300
   format: ccx_ocp_core.core.formats.json.OCPRecommendationsJsonFormat
 
   # Target components to run (empty list means run all single-node components)
