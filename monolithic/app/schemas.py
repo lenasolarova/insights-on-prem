@@ -20,13 +20,6 @@ class ErrorResponse(BaseModel):
     detail: Optional[str] = Field(None, description="Additional error details")
 
 
-# Schemas for upgrade risks prediction endpoint
-class UpgradeRisksPredictionRequest(BaseModel):
-    """Request body for upgrade risks prediction."""
-
-    cluster_id: str = Field(..., description="Cluster UUID")
-
-
 class AlertResponse(BaseModel):
     """Alert information from Thanos metrics."""
 
@@ -53,15 +46,6 @@ class UpgradeRisksPredictors(BaseModel):
         default_factory=list, description="Failing operator conditions"
     )
 
-
-class UpgradeRisksPredictionResponse(BaseModel):
-    """Response for upgrade risks prediction endpoint."""
-
-    upgrade_recommended: bool = Field(..., description="Whether upgrade is recommended")
-    upgrade_risks_predictors: UpgradeRisksPredictors = Field(
-        ..., description="Detected upgrade risk predictors"
-    )
-    status: str = Field(default="ok", description="Response status")
 
 
 # Schemas for batch upgrade risks prediction endpoint (matching ccx-upgrades-data-eng API)

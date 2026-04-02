@@ -16,7 +16,6 @@ from app.schemas import (
     UploadResponse,
     ErrorResponse,
     ReportResponseV2,
-    UpgradeRisksPredictionResponse,
     BatchUpgradeRisksPredictionRequest,
     BatchUpgradeRisksPredictionResponse,
     ClusterPrediction,
