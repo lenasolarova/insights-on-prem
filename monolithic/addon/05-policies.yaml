@@ -1,0 +1,187 @@
+# ConfigurationPolicies targeting local-cluster via insights-on-prem-placement.
+
+# Ensures insights-client always routes recommendations to the on-prem service.
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: insights-on-prem-client-config
+  namespace: insights-on-prem
+  annotations:
+    policy.open-cluster-management.io/standards: ""
+    policy.open-cluster-management.io/categories: ""
+    policy.open-cluster-management.io/controls: ""
+spec:
+  remediationAction: enforce
+  disabled: false
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: insights-on-prem-client-config
+        spec:
+          remediationAction: enforce
+          severity: low
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: insights-client
+                  namespace: open-cluster-management
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: insights-client
+                          # image is required by ConfigurationPolicy — update when MCH upgrades insights-client.
+                          image: registry.redhat.io/rhacm2/insights-client-rhel9@sha256:03973f2da849045a529ea9ffd635afe4963256788d6f8f0985d14325e9a45588
+                          env:
+                            - name: CCX_SERVER
+                              value: http://insights-on-prem.insights-on-prem-poc.svc.cluster.local:8000/api/v2
+                            - name: POLL_INTERVAL
+                              value: "1"
+
+---
+
+# Ensures the console always has UPGRADE_RISKS_PREDICTION_URL pointing to the on-prem service.
+# Uses the internal cluster DNS — no cluster-specific value, works on any cluster without modification.
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: insights-on-prem-urp-config
+  namespace: insights-on-prem
+  annotations:
+    policy.open-cluster-management.io/standards: ""
+    policy.open-cluster-management.io/categories: ""
+    policy.open-cluster-management.io/controls: ""
+spec:
+  remediationAction: enforce
+  disabled: false
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: insights-on-prem-urp-config
+        spec:
+          remediationAction: enforce
+          severity: low
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: console-chart-console-v2
+                  namespace: open-cluster-management
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: console
+                          env:
+                            - name: UPGRADE_RISKS_PREDICTION_URL
+                              value: http://insights-on-prem.insights-on-prem-poc.svc.cluster.local:8000/api/insights-results-aggregator/v2/upgrade-risks-prediction
+
+---
+
+# TEMPORARY: pins the ACM console to a snapshot with UPGRADE_RISKS_PREDICTION_URL support.
+# Remove once a new ACM release ships with this natively (CCXDEV-16237).
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: insights-on-prem-console-image
+  namespace: insights-on-prem
+  annotations:
+    policy.open-cluster-management.io/standards: ""
+    policy.open-cluster-management.io/categories: ""
+    policy.open-cluster-management.io/controls: ""
+spec:
+  remediationAction: enforce
+  disabled: false
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: insights-on-prem-console-image
+        spec:
+          remediationAction: enforce
+          severity: low
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: console-chart-console-v2
+                  namespace: open-cluster-management
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: console
+                          image: quay.io/stolostron/console:latest-2.16
+
+---
+
+# TEMPORARY: pauses MCH to prevent it from reverting CCX_SERVER on insights-client.
+# Remove once MCH ships an insights-client version that no longer hardcodes CCX_SERVER.
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: insights-on-prem-mch-pause
+  namespace: insights-on-prem
+  annotations:
+    policy.open-cluster-management.io/standards: ""
+    policy.open-cluster-management.io/categories: ""
+    policy.open-cluster-management.io/controls: ""
+spec:
+  remediationAction: enforce
+  disabled: false
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: insights-on-prem-mch-pause
+        spec:
+          remediationAction: enforce
+          severity: low
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: operator.open-cluster-management.io/v1
+                kind: MultiClusterHub
+                metadata:
+                  name: multiclusterhub
+                  namespace: open-cluster-management
+                  annotations:
+                    installer.open-cluster-management.io/pause: "true"
+
+---
+
+apiVersion: policy.open-cluster-management.io/v1
+kind: PlacementBinding
+metadata:
+  name: insights-on-prem-policies
+  namespace: insights-on-prem
+placementRef:
+  apiGroup: cluster.open-cluster-management.io
+  kind: Placement
+  name: insights-on-prem-placement
+subjects:
+  - apiGroup: policy.open-cluster-management.io
+    kind: Policy
+    name: insights-on-prem-client-config
+  - apiGroup: policy.open-cluster-management.io
+    kind: Policy
+    name: insights-on-prem-urp-config
+  - apiGroup: policy.open-cluster-management.io
+    kind: Policy
+    name: insights-on-prem-console-image
+  - apiGroup: policy.open-cluster-management.io
+    kind: Policy
+    name: insights-on-prem-mch-pause
