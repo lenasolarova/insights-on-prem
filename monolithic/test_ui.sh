@@ -11,28 +11,21 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 UI_TESTS="$SCRIPT_DIR/tests/ui"
 CLUSTER_ID=$(oc get clusterversion version -o jsonpath='{.spec.clusterID}')
 
-# Custom console image with UPGRADE_RISKS_PREDICTION_URL env var support baked in.
-# Built from the original ACM console image with a one-line change - for testing only.
-# See README "Custom console image for URP" section for details.
-CONSOLE_IMAGE="quay.io/ccxdev/insights-on-prem-lsolarov-console:latest"
+# stolostron/console snapshot with UPGRADE_RISKS_PREDICTION_URL env var support (CCXDEV-16237).
+CONSOLE_IMAGE="quay.io/stolostron/console:latest-2.16"
 
-# Capture original values of deployments we mutate so they can be restored on exit.
-ORIG_THANOS_LOOKBACK=$(oc get deployment insights-on-prem -n insights-on-prem-poc \
-  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="THANOS_QUERY_LOOKBACK_MINUTES")].value}' 2>/dev/null || echo "")
+# Capture original console state to restore on exit.
+# THANOS_QUERY_LOOKBACK_MINUTES is NOT restored — it stays at 0 so URP keeps working in the UI.
 ORIG_CONSOLE_IMAGE=$(oc get deployment console-chart-console-v2 -n open-cluster-management \
   -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo "")
 ORIG_CONSOLE_URP_URL=$(oc get deployment console-chart-console-v2 -n open-cluster-management \
   -o json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(next((e.get('value','') for e in d['spec']['template']['spec']['containers'][0].get('env',[]) if e['name']=='UPGRADE_RISKS_PREDICTION_URL'), ''))" 2>/dev/null || echo "")
 
 restore() {
-  echo "Restoring deployments to original state..."
-  if [ -n "$ORIG_THANOS_LOOKBACK" ]; then
-    oc set env deployment/insights-on-prem -n insights-on-prem-poc \
-      THANOS_QUERY_LOOKBACK_MINUTES="$ORIG_THANOS_LOOKBACK" 2>/dev/null || true
-  else
-    oc set env deployment/insights-on-prem -n insights-on-prem-poc \
-      THANOS_QUERY_LOOKBACK_MINUTES- 2>/dev/null || true
-  fi
+  echo "Restoring console deployments to original state..."
+  # Note: THANOS_QUERY_LOOKBACK_MINUTES is intentionally left at 0 so URP
+  # continues to work in the UI after the script exits. Set it back manually
+  # when done: oc set env deployment/insights-on-prem -n insights-on-prem-poc THANOS_QUERY_LOOKBACK_MINUTES-
   if [ -n "$ORIG_CONSOLE_IMAGE" ]; then
     oc set image deployment/console-chart-console-v2 -n open-cluster-management \
       console="$ORIG_CONSOLE_IMAGE" 2>/dev/null || true
