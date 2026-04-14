@@ -92,6 +92,10 @@ This script:
 4. Configures `insights-operator` to upload archives to the on-premise service
 5. Pauses MultiClusterHub operator and configures `insights-client` to use the on-premise backend
 
+#### Secrets
+
+The postgres password is stored in the secret `insights-postgres` in the `insights-on-prem-poc` namespace, defined in `deploy/postgres.yml`. Note that this is not the best practice, so please use the preferred method on your cluster to define the secret. We kept it there to make it easier to deploy the application with a single script and no human intervention.
+
 ### Verify Deployment
 
 ```bash
