@@ -87,7 +87,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 
 This script:
 1. Creates `insights-on-prem-poc` namespace
-2. Copies PostgreSQL secret from ACM's `search-postgres` database
+2. Deploys PostgreSQL database
 3. Deploys the application and service
 4. Configures `insights-operator` to upload archives to the on-premise service
 5. Pauses MultiClusterHub operator and configures `insights-client` to use the on-premise backend
@@ -156,7 +156,7 @@ oc get policyreport --all-namespaces
 
 ## Database Access
 
-The application uses ACM's existing `search-postgres` database. This serves as temporary solution until we get provided with shared DB from ACM, or we find a our own solution.
+The application deploys its own PostgreSQL database.
 
 **Connect to database:**
 ```bash
@@ -164,5 +164,5 @@ The application uses ACM's existing `search-postgres` database. This serves as t
 docker-compose exec postgres psql -U insights -d insights
 
 # In cluster
-oc exec -it deployment/search-postgres -n open-cluster-management -- psql -U postgres
+oc exec -it deployment/insights-postgres -n insights-on-prem-poc -- psql -U insights -d insights
 ```
