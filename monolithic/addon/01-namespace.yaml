@@ -12,3 +12,12 @@ metadata:
   namespace: open-cluster-management-insights
 spec:
   clusterSet: default
+---
+# Pre-create the workload namespace so the pull secret can be applied
+# before the addon ManifestWork deploys it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: insights-on-prem
+  labels:
+    app: insights-on-prem

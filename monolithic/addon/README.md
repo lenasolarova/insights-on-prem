@@ -43,12 +43,14 @@ kubectl -n open-cluster-management-observability get pod
 ```bash
 cd monolithic/addon/
 
-# Pull secrets (fill in credentials first)
-kubectl apply -f ccxdev-insights-on-prem-poc-secret.yml
-kubectl apply -f ccxdev-insights-on-prem-poc-secret-ocm.yml
-
-# Addon resources (order matters)
+# 1. Namespaces first — pre-creates both hub and workload namespaces
 kubectl apply -f 01-namespace.yaml
+
+# 2. Pull secrets (fill in credentials first)
+kubectl apply -f ccxdev-insights-on-prem-poc-secret.yml        # insights-on-prem ns
+kubectl apply -f ccxdev-insights-on-prem-poc-secret-ocm.yml    # open-cluster-management ns
+
+# 3. Addon resources
 kubectl apply -f 04-addon-template.yaml
 kubectl apply -f 02-addon.yaml
 kubectl apply -f 03-placement.yaml
