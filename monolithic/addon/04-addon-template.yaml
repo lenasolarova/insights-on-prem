@@ -1,0 +1,309 @@
+apiVersion: addon.open-cluster-management.io/v1alpha1
+kind: AddOnTemplate
+metadata:
+  name: insights-on-prem
+spec:
+  addonName: insights-on-prem
+  agentSpec:
+    workload:
+      manifests:
+
+        # ── Namespace ──────────────────────────────────────────────────────────
+        - apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: insights-on-prem
+            labels:
+              app: insights-on-prem
+
+        # ── App service account & RBAC ─────────────────────────────────────────
+        - apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: insights-on-prem
+            namespace: insights-on-prem
+
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRole
+          metadata:
+            name: insights-on-prem-metrics-reader
+          rules:
+            - apiGroups: [""]
+              resources: ["namespaces"]
+              verbs: ["get"]
+            - apiGroups: ["cluster.open-cluster-management.io"]
+              resources: ["managedclusters/metrics"]
+              verbs: ["get"]
+
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          metadata:
+            name: insights-on-prem-metrics-reader
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: insights-on-prem-metrics-reader
+          subjects:
+            - kind: ServiceAccount
+              name: insights-on-prem
+              namespace: insights-on-prem
+
+        # ── PostgreSQL ─────────────────────────────────────────────────────────
+        - apiVersion: v1
+          kind: Secret
+          metadata:
+            name: insights-postgres
+            namespace: insights-on-prem
+          type: Opaque
+          stringData:
+            database-user: insights
+            database-password: insights
+            database-name: insights
+
+        - apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: insights-postgres
+            namespace: insights-on-prem
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+
+        - apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: insights-postgres
+            namespace: insights-on-prem
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: insights-postgres
+            template:
+              metadata:
+                labels:
+                  app: insights-postgres
+              spec:
+                containers:
+                  - name: postgres
+                    image: registry.redhat.io/rhel9/postgresql-16
+                    ports:
+                      - containerPort: 5432
+                        name: postgres
+                        protocol: TCP
+                    env:
+                      - name: POSTGRESQL_USER
+                        valueFrom:
+                          secretKeyRef:
+                            name: insights-postgres
+                            key: database-user
+                      - name: POSTGRESQL_PASSWORD
+                        valueFrom:
+                          secretKeyRef:
+                            name: insights-postgres
+                            key: database-password
+                      - name: POSTGRESQL_DATABASE
+                        valueFrom:
+                          secretKeyRef:
+                            name: insights-postgres
+                            key: database-name
+                    volumeMounts:
+                      - name: data
+                        mountPath: /var/lib/pgsql/data
+                volumes:
+                  - name: data
+                    persistentVolumeClaim:
+                      claimName: insights-postgres
+
+        - apiVersion: v1
+          kind: Service
+          metadata:
+            name: insights-postgres
+            namespace: insights-on-prem
+          spec:
+            selector:
+              app: insights-postgres
+            ports:
+              - protocol: TCP
+                port: 5432
+                targetPort: 5432
+                name: postgres
+            type: ClusterIP
+
+        # ── App deployment ─────────────────────────────────────────────────────
+        - apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: insights-on-prem
+            namespace: insights-on-prem
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: insights-on-prem
+            template:
+              metadata:
+                labels:
+                  app: insights-on-prem
+              spec:
+                serviceAccountName: insights-on-prem
+                containers:
+                  - name: insights-on-prem
+                    image: quay.io/ccxdev/insights-on-premise-poc:latest
+                    ports:
+                      - containerPort: 8000
+                        name: http
+                        protocol: TCP
+                    env:
+                      - name: POSTGRES_HOST
+                        value: insights-postgres
+                      - name: POSTGRES_PORT
+                        value: "5432"
+                      - name: POSTGRES_USER
+                        valueFrom:
+                          secretKeyRef:
+                            name: insights-postgres
+                            key: database-user
+                      - name: POSTGRES_PASSWORD
+                        valueFrom:
+                          secretKeyRef:
+                            name: insights-postgres
+                            key: database-password
+                      - name: POSTGRES_DB
+                        valueFrom:
+                          secretKeyRef:
+                            name: insights-postgres
+                            key: database-name
+                      - name: THANOS_QUERY_LOOKBACK_MINUTES
+                        value: "0"
+                imagePullSecrets:
+                  - name: ccxdev-insights-on-prem-poc-pull-secret
+
+        - apiVersion: v1
+          kind: Service
+          metadata:
+            name: insights-on-prem
+            namespace: insights-on-prem
+          spec:
+            selector:
+              app: insights-on-prem
+            ports:
+              - protocol: TCP
+                port: 8000
+                targetPort: 8000
+                name: http
+            type: ClusterIP
+
+        - apiVersion: route.openshift.io/v1
+          kind: Route
+          metadata:
+            name: insights-on-prem
+            namespace: insights-on-prem
+          spec:
+            to:
+              kind: Service
+              name: insights-on-prem
+            port:
+              targetPort: http
+            tls:
+              termination: edge
+              insecureEdgeTerminationPolicy: Redirect
+
+        # ── Insights operator redirect ─────────────────────────────────────────
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: insights-config
+            namespace: openshift-insights
+          data:
+            config.yaml: |
+              dataReporting:
+                uploadEndpoint: http://insights-on-prem.insights-on-prem.svc.cluster.local:8000/api/ingress/v1/upload
+                downloadEndpoint: http://insights-on-prem.insights-on-prem.svc.cluster.local:8000/api/v2/cluster/%s/reports
+                interval: 0h1m0s
+
+        # ── Configure job RBAC ─────────────────────────────────────────────────
+        - apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: insights-on-prem-configurator
+            namespace: insights-on-prem
+
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRole
+          metadata:
+            name: insights-on-prem-configurator
+          rules:
+            - apiGroups: ["apps"]
+              resources: ["deployments"]
+              verbs: ["get", "patch", "update"]
+
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          metadata:
+            name: insights-on-prem-configurator
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: insights-on-prem-configurator
+          subjects:
+            - kind: ServiceAccount
+              name: insights-on-prem-configurator
+              namespace: insights-on-prem
+
+        # ── Configure job ──────────────────────────────────────────────────────
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: insights-on-prem-configure-script
+            namespace: insights-on-prem
+          data:
+            configure.sh: |
+              #!/bin/bash
+              set -eo pipefail
+
+              echo "Waiting for insights-on-prem deployment..."
+              kubectl wait deployment/insights-on-prem \
+                -n insights-on-prem \
+                --for=condition=Available \
+                --timeout=300s
+
+              echo "Restarting insights-operator to pick up redirect config..."
+              kubectl rollout restart deployment/insights-operator \
+                -n openshift-insights 2>/dev/null \
+                || echo "WARN: Could not restart insights-operator"
+
+              echo "Done. CCX_SERVER, UPGRADE_RISKS_PREDICTION_URL and console image are managed by policies."
+
+        - apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: insights-on-prem-configure
+            namespace: insights-on-prem
+          spec:
+            backoffLimit: 3
+            ttlSecondsAfterFinished: 86400
+            template:
+              spec:
+                serviceAccountName: insights-on-prem-configurator
+                restartPolicy: OnFailure
+                containers:
+                  - name: configure
+                    image: quay.io/openshift/origin-cli:4.15
+                    command: ["/bin/bash", "/scripts/configure.sh"]
+                    volumeMounts:
+                      - name: script
+                        mountPath: /scripts
+                volumes:
+                  - name: script
+                    configMap:
+                      name: insights-on-prem-configure-script
+                      defaultMode: 0755
+
+  registration:
+    - type: KubeClient
+      kubeClient:
+        hubPermissions: []
