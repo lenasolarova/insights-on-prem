@@ -95,6 +95,15 @@ spec:
           object-templates:
             - complianceType: musthave
               objectDefinition:
+                apiVersion: v1
+                kind: ConfigMap
+                metadata:
+                  name: console-config
+                  namespace: open-cluster-management
+                data:
+                  UPGRADE_RISKS_PREDICTION_URL: 'https://{{hub (lookup "route.openshift.io/v1" "Route" "insights-on-prem" "insights-on-prem").spec.host hub}}/api/insights-results-aggregator/v2/upgrade-risks-prediction'
+            - complianceType: musthave
+              objectDefinition:
                 apiVersion: apps/v1
                 kind: Deployment
                 metadata:
@@ -108,9 +117,6 @@ spec:
                       containers:
                         - name: console
                           image: quay.io/ccxdev/insights-on-prem-lsolarov-console:latest
-                          env:
-                            - name: UPGRADE_RISKS_PREDICTION_URL
-                              value: 'https://{{hub (lookup "route.openshift.io/v1" "Route" "insights-on-prem" "insights-on-prem").spec.host hub}}/api/insights-results-aggregator/v2/upgrade-risks-prediction'
 
 ---
 
