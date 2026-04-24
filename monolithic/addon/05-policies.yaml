@@ -117,6 +117,9 @@ spec:
                       containers:
                         - name: console
                           image: quay.io/ccxdev/insights-on-prem-lsolarov-console:latest
+                          env:
+                            - name: UPGRADE_RISKS_PREDICTION_URL
+                              value: 'https://{{hub (lookup "route.openshift.io/v1" "Route" "insights-on-prem" "insights-on-prem").spec.host hub}}/api/insights-results-aggregator/v2/upgrade-risks-prediction'
 
 ---
 
