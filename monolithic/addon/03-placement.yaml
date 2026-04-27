@@ -4,8 +4,6 @@ metadata:
   name: insights-on-prem
   namespace: open-cluster-management-insights
 spec:
-  clusterSets:
-    - default
   predicates:
     - requiredClusterSelector:
         labelSelector:

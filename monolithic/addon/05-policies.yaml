@@ -6,14 +6,14 @@
 
 ---
 
-# Allows the PlacementBinding below to select clusters from the default cluster set.
+# Allows the PlacementBinding below to select clusters from the global cluster set.
 apiVersion: cluster.open-cluster-management.io/v1beta2
 kind: ManagedClusterSetBinding
 metadata:
-  name: default
+  name: global
   namespace: insights-on-prem
 spec:
-  clusterSet: default
+  clusterSet: global
 
 ---
 
@@ -21,7 +21,7 @@ spec:
 apiVersion: cluster.open-cluster-management.io/v1beta1
 kind: Placement
 metadata:
-  name: insights-on-prem
+  name: insights-on-prem-policies
   namespace: insights-on-prem
 spec:
   predicates:
@@ -117,9 +117,6 @@ spec:
                       containers:
                         - name: console
                           image: quay.io/ccxdev/insights-on-prem-lsolarov-console:latest
-                          env:
-                            - name: UPGRADE_RISKS_PREDICTION_URL
-                              value: 'https://{{hub (lookup "route.openshift.io/v1" "Route" "insights-on-prem" "insights-on-prem").spec.host hub}}/api/insights-results-aggregator/v2/upgrade-risks-prediction'
 
 ---
 
@@ -174,7 +171,7 @@ metadata:
 placementRef:
   apiGroup: cluster.open-cluster-management.io
   kind: Placement
-  name: insights-on-prem
+  name: insights-on-prem-policies
 subjects:
   - apiGroup: policy.open-cluster-management.io
     kind: Policy
