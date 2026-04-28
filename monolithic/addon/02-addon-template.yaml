@@ -179,6 +179,11 @@ spec:
                           secretKeyRef:
                             name: insights-postgres
                             key: database-name
+                      # PoC only: query Thanos at current time so upgrade risk predictions
+                      # are visible immediately on a fresh cluster. Remove for production
+                      # deployments where a 60-minute lookback is more appropriate.
+                      - name: THANOS_QUERY_LOOKBACK_MINUTES
+                        value: "0"
                 imagePullSecrets:
                   - name: ccxdev-insights-on-prem-poc-pull-secret
 

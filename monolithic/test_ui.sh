@@ -50,25 +50,38 @@ echo "   Route: $ON_PREM_URP_URL"
 
 # ---------------------------------------------------------------------------
 echo ""
-echo "5. Waiting for insights-operator to upload and alerts to reach Thanos (~5 min)..."
+echo "5. Waiting for insights-operator to upload and recommendations to appear..."
 # ---------------------------------------------------------------------------
-TOKEN=$(oc exec deployment/insights-on-prem -n $NS -- cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-for i in $(seq 1 20); do
+REC_COUNT=0
+for i in $(seq 1 10); do
   REC_COUNT=$(curl -sk "https://${ON_PREM_ROUTE}/api/v2/cluster/${CLUSTER_ID}/reports" | \
     python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('report',{}).get('meta',{}).get('count',0))" 2>/dev/null || echo 0)
+  echo "   $(date '+%H:%M:%S') recommendations from on-prem: ${REC_COUNT}"
+  [ "${REC_COUNT:-0}" -gt 0 ] && break
+  sleep 30
+done
+
+# ---------------------------------------------------------------------------
+echo ""
+echo "6. Waiting for alerts to reach Thanos (~2-5 min)..."
+# ---------------------------------------------------------------------------
+TOKEN=$(oc exec deployment/insights-on-prem -n $NS -- cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+ALERT_COUNT=0
+for i in $(seq 1 10); do
   ALERT_COUNT=$(oc exec deployment/insights-on-prem -n $NS -- sh -c \
     "curl -sk -H 'Authorization: Bearer $TOKEN' \
      'https://rbac-query-proxy.open-cluster-management-observability.svc.cluster.local:8443/api/v1/query' \
      --data-urlencode 'query=ALERTS{alertname=~\"InsightsTest.*\"}' 2>/dev/null" | \
     python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d['data']['result']))" 2>/dev/null || echo 0)
-  echo "   $(date '+%H:%M:%S') recommendations: ${REC_COUNT} | alerts in Thanos: ${ALERT_COUNT}"
-  [ "${REC_COUNT:-0}" -gt 0 ] && [ "${ALERT_COUNT:-0}" -gt 0 ] && break
+  echo "   $(date '+%H:%M:%S') alerts in Thanos: ${ALERT_COUNT}"
+  [ "${ALERT_COUNT:-0}" -gt 0 ] && break
   sleep 30
 done
 
 # ---------------------------------------------------------------------------
 echo ""
 echo "7. Verifying end-to-end..."
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 PASS=0; FAIL=0
 check() {
