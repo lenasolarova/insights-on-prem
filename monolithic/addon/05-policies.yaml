@@ -1,8 +1,7 @@
 # ConfigurationPolicies targeting local-cluster via insights-on-prem-placement.
 #
-# Prerequisite: create ccxdev-insights-on-prem-poc-pull-secret in BOTH namespaces:
-#   kubectl apply -f ccxdev-insights-on-prem-poc-secret.yml        # insights-on-prem
-#   kubectl apply -f ccxdev-insights-on-prem-poc-secret-ocm.yml    # open-cluster-management
+# Prerequisite: create ccxdev-insights-on-prem-poc-pull-secret in insights-on-prem namespace:
+#   kubectl apply -f ccxdev-insights-on-prem-poc-secret.yml        # for the app image only
 
 ---
 
@@ -112,11 +111,9 @@ spec:
                 spec:
                   template:
                     spec:
-                      imagePullSecrets:
-                        - name: ccxdev-insights-on-prem-poc-pull-secret
                       containers:
                         - name: console
-                          image: quay.io/ccxdev/insights-on-prem-lsolarov-console:latest
+                          image: quay.io/stolostron/console:latest-2.17
 
 ---
 
