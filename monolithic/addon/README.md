@@ -77,6 +77,7 @@ kubectl apply -f 05-policies.yaml         # ConfigurationPolicies
 | `insights-on-prem-mch-pause` | Pauses MCH so it doesn't revert the console image or other settings |
 | `insights-on-prem-console` | Pins console to `stolostron/console:latest-2.17`, sets `UPGRADE_RISKS_PREDICTION_URL` in `console-config` ConfigMap dynamically from the route hostname |
 | `insights-on-prem-insights-client` | Sets `CCX_SERVER` on the `insights-client` deployment to redirect recommendations to on-prem |
+| `insights-on-prem-spoke-redirect` | Pushes `insights-config` to opted-in spoke clusters so their insights-operator also uploads to on-prem (opt in: `kubectl label managedcluster <name> insights-on-prem=true`) |
 
 ## Traffic flow
 

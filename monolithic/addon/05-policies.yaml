@@ -178,3 +178,75 @@ subjects:
   - apiGroup: policy.open-cluster-management.io
     kind: Policy
     name: insights-on-prem-insights-client
+
+---
+
+# Placement targeting spoke managed clusters that opt in via label insights-on-prem=true.
+# To redirect a spoke cluster: kubectl label managedcluster <name> insights-on-prem=true
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Placement
+metadata:
+  name: insights-on-prem-spokes
+  namespace: insights-on-prem
+spec:
+  predicates:
+    - requiredClusterSelector:
+        labelSelector:
+          matchLabels:
+            insights-on-prem: "true"
+
+---
+
+# Redirects insights-operator on opted-in spoke clusters to the on-prem service.
+# Uses hub templates to resolve the external route hostname dynamically.
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: insights-on-prem-spoke-redirect
+  namespace: insights-on-prem
+  annotations:
+    policy.open-cluster-management.io/standards: ""
+    policy.open-cluster-management.io/categories: ""
+    policy.open-cluster-management.io/controls: ""
+spec:
+  remediationAction: enforce
+  disabled: false
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: insights-on-prem-spoke-redirect
+        spec:
+          remediationAction: enforce
+          severity: low
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: ConfigMap
+                metadata:
+                  name: insights-config
+                  namespace: openshift-insights
+                data:
+                  config.yaml: |
+                    dataReporting:
+                      uploadEndpoint: https://{{hub (lookup "route.openshift.io/v1" "Route" "insights-on-prem" "insights-on-prem").spec.host hub}}/api/ingress/v1/upload
+                      downloadEndpoint: https://{{hub (lookup "route.openshift.io/v1" "Route" "insights-on-prem" "insights-on-prem").spec.host hub}}/api/v2/cluster/%s/reports
+                      interval: 0h1m0s
+
+---
+
+apiVersion: policy.open-cluster-management.io/v1
+kind: PlacementBinding
+metadata:
+  name: insights-on-prem-spoke-policies
+  namespace: insights-on-prem
+placementRef:
+  apiGroup: cluster.open-cluster-management.io
+  kind: Placement
+  name: insights-on-prem-spokes
+subjects:
+  - apiGroup: policy.open-cluster-management.io
+    kind: Policy
+    name: insights-on-prem-spoke-redirect
