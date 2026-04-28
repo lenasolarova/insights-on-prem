@@ -49,14 +49,14 @@ kubectl apply -f 01-namespace.yaml
 # 2. App pull secret (fill in credentials first — see above)
 kubectl apply -f ccxdev-insights-on-prem-poc-secret.yml
 
-# 3. Addon resources (order matters)
-kubectl apply -f 04-addon-template.yaml
-kubectl apply -f 02-addon.yaml
-kubectl apply -f 03-placement.yaml
-kubectl apply -f 05-policies.yaml
+# 3. Addon resources — apply in this order (template before CMA to avoid reconciliation race)
+kubectl apply -f 04-addon-template.yaml   # AddOnTemplate (workloads)
+kubectl apply -f 02-addon.yaml            # ClusterManagementAddOn
+kubectl apply -f 03-placement.yaml        # Placement (target clusters)
+kubectl apply -f 05-policies.yaml         # ConfigurationPolicies
 ```
 
-> The addon manager automatically creates the `ManagedClusterAddOn` on `local-cluster` based on the Placement — do not apply `05-managedclusteraddon.yaml` manually.
+> The addon manager automatically creates the `ManagedClusterAddOn` on `local-cluster` based on the Placement.
 
 ## What gets deployed
 

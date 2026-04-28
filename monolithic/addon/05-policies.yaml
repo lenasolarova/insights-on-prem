@@ -67,9 +67,8 @@ spec:
 
 ---
 
-# Pins the ACM console to a build that supports UPGRADE_RISKS_PREDICTION_URL (CCXDEV-16237),
-# sets the URL dynamically from the on-prem route, and ensures the pull secret is present.
-# Remove the image + imagePullSecrets entries once upstream ACM ships the fix natively.
+# Pins the ACM console to latest-2.17 which supports UPGRADE_RISKS_PREDICTION_URL (CCXDEV-16237 / stolostron/console#6021).
+# Sets the URL dynamically from the on-prem route via hub template in console-config ConfigMap.
 apiVersion: policy.open-cluster-management.io/v1
 kind: Policy
 metadata:

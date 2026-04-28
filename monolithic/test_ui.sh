@@ -2,6 +2,7 @@
 # test_ui.sh - Sets up test data to verify all four Insights sections in the ACM fleet overview UI.
 #
 # Prerequisites: addon must be deployed (monolithic/addon/).
+# The addon handles console image, UPGRADE_RISKS_PREDICTION_URL, and CCX_SERVER via policies.
 #
 # Results are visible at: https://<your-cluster>/multicloud/home/overview
 
@@ -11,12 +12,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 UI_TESTS="$SCRIPT_DIR/tests/ui"
 CLUSTER_ID=$(oc get clusterversion version -o jsonpath='{.spec.clusterID}')
 NS="insights-on-prem"
-
-# stolostron daily snapshot — has UPGRADE_RISKS_PREDICTION_URL support (CCXDEV-16237).
-# MCH is paused via policy so this image sticks.
-CONSOLE_IMAGE="quay.io/stolostron/console:latest-2.16"
-
-
 
 echo "=== Insights On-Premise UI Test Setup ==="
 echo "Cluster ID: $CLUSTER_ID"
@@ -38,38 +33,23 @@ oc apply -f "$UI_TESTS/critical-alerts.yaml"
 echo ""
 echo "3. Configuring on-prem service to query current Thanos data..."
 # ---------------------------------------------------------------------------
+# Override lookback to 0 so freshly fired alerts are visible immediately.
+# Default (60 min) is intentional for production — this is test-only.
 oc set env deployment/insights-on-prem -n $NS THANOS_QUERY_LOOKBACK_MINUTES=0
 oc rollout status deployment/insights-on-prem -n $NS --timeout=60s
 
 # ---------------------------------------------------------------------------
 echo ""
-echo "4. Ensuring HTTPS route exists for console backend..."
+echo "4. Getting route for URP verification..."
 # ---------------------------------------------------------------------------
-oc create route edge insights-on-prem \
-  -n $NS \
-  --service=insights-on-prem \
-  --port=8000 \
-  --insecure-policy=Redirect 2>/dev/null || true
-
+# Route is created by the addon — just look it up.
 ON_PREM_ROUTE=$(oc get route insights-on-prem -n $NS -o jsonpath='{.spec.host}')
 ON_PREM_URP_URL="https://${ON_PREM_ROUTE}/api/insights-results-aggregator/v2/upgrade-risks-prediction"
 echo "   Route: $ON_PREM_URP_URL"
 
 # ---------------------------------------------------------------------------
 echo ""
-echo "5. Ensuring console has stolostron snapshot image and URP URL..."
-# ---------------------------------------------------------------------------
-# MCH is paused via policy (insights-on-prem-mch-pause) so changes here stick.
-# The stolostron snapshot already has UPGRADE_RISKS_PREDICTION_URL support (CCXDEV-16237).
-oc set image deployment/console-chart-console-v2 -n open-cluster-management \
-  console=$CONSOLE_IMAGE
-oc set env deployment/console-chart-console-v2 -n open-cluster-management \
-  UPGRADE_RISKS_PREDICTION_URL=$ON_PREM_URP_URL
-oc rollout status deployment/console-chart-console-v2 -n open-cluster-management --timeout=120s
-
-# ---------------------------------------------------------------------------
-echo ""
-echo "6. Waiting for alerts to reach Thanos (~2-5 min)..."
+echo "5. Waiting for alerts to reach Thanos (~2-5 min)..."
 # ---------------------------------------------------------------------------
 TOKEN=$(oc exec deployment/insights-on-prem -n $NS -- cat /var/run/secrets/kubernetes.io/serviceaccount/token)
 for _ in $(seq 1 10); do
@@ -85,7 +65,7 @@ done
 
 # ---------------------------------------------------------------------------
 echo ""
-echo "7. Verifying URP data comes from on-prem via the actual console route..."
+echo "6. Verifying URP data comes from on-prem via the actual console route..."
 # ---------------------------------------------------------------------------
 URP_RESULT=$(curl -sk -X POST "$ON_PREM_URP_URL" \
   -H 'Content-Type: application/json' \
@@ -116,4 +96,4 @@ echo "To clean up:"
 echo "  oc delete validatingwebhookconfiguration insights-test-webhook"
 echo "  oc patch configs.samples.operator.openshift.io cluster --type merge -p '{\"spec\":{\"managementState\":\"Managed\"}}'"
 echo "  oc delete prometheusrule insights-test-alerts -n openshift-monitoring"
-echo "  oc delete route insights-on-prem -n $NS"
+echo "  oc set env deployment/insights-on-prem -n $NS THANOS_QUERY_LOOKBACK_MINUTES-"
