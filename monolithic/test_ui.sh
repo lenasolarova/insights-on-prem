@@ -50,29 +50,19 @@ echo "   Route: $ON_PREM_URP_URL"
 
 # ---------------------------------------------------------------------------
 echo ""
-echo "5. Waiting for insights-operator to upload and recommendations to appear..."
-# ---------------------------------------------------------------------------
-for i in $(seq 1 10); do
-  REC_COUNT=$(curl -sk "https://${ON_PREM_ROUTE}/api/v2/cluster/${CLUSTER_ID}/reports" | \
-    python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('report',{}).get('meta',{}).get('count',0))" 2>/dev/null || echo 0)
-  echo "   $(date '+%H:%M:%S') recommendations from on-prem: ${REC_COUNT}"
-  [ "${REC_COUNT:-0}" -gt 0 ] && break
-  sleep 30
-done
-
-# ---------------------------------------------------------------------------
-echo ""
-echo "6. Waiting for alerts to reach Thanos (~2-5 min)..."
+echo "5. Waiting for insights-operator to upload and alerts to reach Thanos (~5 min)..."
 # ---------------------------------------------------------------------------
 TOKEN=$(oc exec deployment/insights-on-prem -n $NS -- cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-for _ in $(seq 1 10); do
-  COUNT=$(oc exec deployment/insights-on-prem -n $NS -- sh -c \
+for i in $(seq 1 20); do
+  REC_COUNT=$(curl -sk "https://${ON_PREM_ROUTE}/api/v2/cluster/${CLUSTER_ID}/reports" | \
+    python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('report',{}).get('meta',{}).get('count',0))" 2>/dev/null || echo 0)
+  ALERT_COUNT=$(oc exec deployment/insights-on-prem -n $NS -- sh -c \
     "curl -sk -H 'Authorization: Bearer $TOKEN' \
      'https://rbac-query-proxy.open-cluster-management-observability.svc.cluster.local:8443/api/v1/query' \
      --data-urlencode 'query=ALERTS{alertname=~\"InsightsTest.*\"}' 2>/dev/null" | \
-    python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d['data']['result']))" 2>/dev/null)
-  echo "   $(date '+%H:%M:%S') alerts in Thanos: ${COUNT:-0}"
-  [ "${COUNT:-0}" -gt 0 ] && break
+    python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d['data']['result']))" 2>/dev/null || echo 0)
+  echo "   $(date '+%H:%M:%S') recommendations: ${REC_COUNT} | alerts in Thanos: ${ALERT_COUNT}"
+  [ "${REC_COUNT:-0}" -gt 0 ] && [ "${ALERT_COUNT:-0}" -gt 0 ] && break
   sleep 30
 done
 
@@ -94,11 +84,8 @@ ACTUAL_IMAGE=$(oc get pods -n open-cluster-management -l name=console-chart-cons
 check "console running expected image ($EXPECTED_CONSOLE_IMAGE)" \
   "$([ "$ACTUAL_IMAGE" = "$EXPECTED_CONSOLE_IMAGE" ] && echo ok || echo "got: $ACTUAL_IMAGE")"
 
-# Recommendations from on-prem
-FINAL_REC_COUNT=$(curl -sk "https://${ON_PREM_ROUTE}/api/v2/cluster/${CLUSTER_ID}/reports" | \
-  python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('report',{}).get('meta',{}).get('count',0))" 2>/dev/null || echo 0)
 check "recommendations served from on-prem (count > 0)" \
-  "$([ "${FINAL_REC_COUNT:-0}" -gt 0 ] && echo ok || echo "got 0 — archive not uploaded yet")"
+  "$([ "${REC_COUNT:-0}" -gt 0 ] && echo ok || echo "got 0 — archive not uploaded yet")"
 
 # URP from on-prem
 URP_RESULT=$(curl -sk -X POST "$ON_PREM_URP_URL" \
@@ -108,7 +95,7 @@ HAS_ALERTS=$(echo "$URP_RESULT" | grep -c "InsightsTestCriticalAlert" || true)
 UPGRADE_RECOMMENDED=$(echo "$URP_RESULT" | python3 -c \
   "import sys,json; d=json.load(sys.stdin); p=d.get('predictions',[]); print(p[0].get('upgrade_recommended','?') if p else '?')" 2>/dev/null)
 check "URP endpoint returns cluster-local fake alerts from on-prem" \
-  "$([ "${HAS_ALERTS:-0}" -gt 0 ] && echo ok || echo "alerts not found - Thanos may need more time")"
+  "$([ "${HAS_ALERTS:-0}" -gt 0 ] && echo ok || echo "alerts not found (Thanos had ${ALERT_COUNT:-0})")"
 check "URP endpoint returns upgrade_recommended=False" \
   "$([ "$UPGRADE_RECOMMENDED" = "False" ] && echo ok || echo "got: $UPGRADE_RECOMMENDED")"
 

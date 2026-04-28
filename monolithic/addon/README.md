@@ -50,9 +50,9 @@ kubectl apply -f 01-namespace.yaml
 kubectl apply -f ccxdev-insights-on-prem-poc-secret.yml
 
 # 3. Addon resources — apply in this order (template before CMA to avoid reconciliation race)
-kubectl apply -f 04-addon-template.yaml   # AddOnTemplate (workloads)
-kubectl apply -f 02-addon.yaml            # ClusterManagementAddOn
-kubectl apply -f 03-placement.yaml        # Placement (target clusters)
+kubectl apply -f 02-addon-template.yaml   # AddOnTemplate (workloads)
+kubectl apply -f 03-addon.yaml            # ClusterManagementAddOn
+kubectl apply -f 04-placement.yaml        # Placement (target clusters)
 kubectl apply -f 05-policies.yaml         # ConfigurationPolicies
 ```
 
@@ -123,8 +123,8 @@ This creates test recommendations and alerts, waits for them to reach Thanos, an
 
 ```bash
 kubectl delete -f 05-policies.yaml
-kubectl delete -f 03-placement.yaml
-kubectl delete -f 02-addon.yaml
-kubectl delete -f 04-addon-template.yaml
+kubectl delete -f 04-placement.yaml
+kubectl delete -f 03-addon.yaml
+kubectl delete -f 02-addon-template.yaml
 kubectl delete -f 01-namespace.yaml
 ```
